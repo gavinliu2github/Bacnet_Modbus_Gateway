@@ -6,16 +6,21 @@
 #include "../flash/flash.h"
 #include "../schedule/schedule.h"
 
+
+#include "task.h"
+#include "semphr.h"
+
+extern xSemaphoreHandle sem_subnet_tx;
+extern xQueueHandle qSubSerial;
+
+
 extern void InitCRC16(void);
-
 extern U8_T ChangeFlash;
-
 extern U8_T far CRClo;
 extern U8_T far CRChi;
 extern void CRC16_Tstat(U8_T ch);
 extern U8_T Sever_Order;
 extern U8_T far Para[400];
-extern U8_T   global_signal;
 
 SCAN_DB far scan_db[MAX_ID];
 SCAN_DB far current_db;
@@ -51,7 +56,15 @@ void send_scan_cmd(U8_T max_id, U8_T min_id)
 	scan_response_state = NONE_ID;
 	Sever_Order = SERVER_SCAN;
 
+#ifdef  SemaphoreCreate						  
+	if(cSemaphoreTake(sem_subnet_tx, 10) == pdFALSE)
+		return;
+#endif
 	Tx_To_Tstat(buf, 6);
+#ifdef  SemaphoreCreate						  
+	cSemaphoreGive(sem_subnet_tx);
+#endif
+
 }
 
 #define	DELAY_TICKS		50
@@ -99,7 +112,16 @@ void assignment_id_with_sn(U8_T old_id, U8_T new_id, U32_T current_sn)
 	scan_state = SCAN_ASSIGN_ID_WITH_SN;
 	scan_response_state = NONE_ID;
 	Sever_Order = SERVER_SCAN;
+
+#ifdef  SemaphoreCreate						  
+	if(cSemaphoreTake(sem_subnet_tx, 10) == pdFALSE)
+		return;
+#endif
 	Tx_To_Tstat(buf, 12);
+#ifdef  SemaphoreCreate						  
+	cSemaphoreGive(sem_subnet_tx);
+#endif
+
 }
 
 U8_T get_idle_id(void)
@@ -258,27 +280,19 @@ void dealwith_conflict_id(void)
 void scan_tstat(void)
 {
 	U8_T cnt[5];
+	
+	bin_search(1, 254);
+	dealwith_conflict_id();
 
-	if(!global_signal)
+	cnt[0] =  db_ctr;
+//	Uart0_Tx(cnt, 1);
+
+	if(scan_db_changed == TRUE)
 	{
-	//	global_signal = 1;	
-		
-		bin_search(1, 254);
-		dealwith_conflict_id();
-	
-		cnt[0] =  db_ctr;
-	
-		if(scan_db_changed == TRUE)
-		{
-			scan_db_changed = FALSE;
-			ChangeFlash = 1;
-		}
+		scan_db_changed = FALSE;
+		ChangeFlash = 1;
 	}
 }
-
-
-
-
 
 // read from flash to get the init online status
 void init_scan(void)
@@ -287,6 +301,7 @@ void init_scan(void)
 	U8_T is_nc_in_db = FALSE;
 	memset(online, 0, 32);
 	memset(occupy, 0, 32);
+	
 	db_ctr = 0;
 	nc_id = Para[13];
 	nc_sn = ((U32_T)Para[7] << 24) | ((U32_T)Para[5] << 16) | ((U32_T)Para[3] << 8) | Para[1];

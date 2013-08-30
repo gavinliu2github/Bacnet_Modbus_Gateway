@@ -3,6 +3,14 @@
 #include "8563.h"
 #include "main.h"
 
+#include "task.h"
+#include "semphr.h"
+
+
+extern xSemaphoreHandle sem_subnet_tx;
+extern xQueueHandle qSubSerial;
+
+
 //////////LHN ADD////////////////
 #include "delay.h"
 #include "uart.h"
@@ -13,8 +21,6 @@ U8_T far Ort_Table[256] = {0};
 STR_WR far WR_Roution[MAX_WR];
 STR_AR far AR_Roution[MAX_AR];
 UN_ID far ID_Config[MAX_ID];
-
-extern  U8_T   global_signal;
 
 bit BIT_FLAG;  // 0 -- run schedule 
 unsigned char idata current_hour;
@@ -104,8 +110,6 @@ bit GetBit(unsigned char bit_number,unsigned char *value)
 }
 
 
-
-
 /////LHN ADD///////////////////
 void SendSchedualData(unsigned char id_index, bit output)
 {
@@ -115,10 +119,8 @@ void SendSchedualData(unsigned char id_index, bit output)
 		unsigned char byte[2];
 	}crc;
 	
-
-	unsigned char retry_times = 3;
+	unsigned char retry_times = 3;					/* 3 */
 	schedule_id = id_index + 1;
-	 
 	
 	send_schedual[0] = schedule_id;
 	send_schedual[1] = 0x06;
@@ -131,10 +133,21 @@ void SendSchedualData(unsigned char id_index, bit output)
 	send_schedual[6] = crc.byte[0];
 	send_schedual[7] = crc.byte[1];
 
-	while(retry_times )						
+	while(retry_times)
 	{
 		Sever_Order = SERVER_SCHEDULE;
- 		Tx_To_Tstat(send_schedual, 8);						  
+
+#ifdef  SemaphoreCreate						  
+		if(cSemaphoreTake(sem_subnet_tx, 10) == pdFALSE)
+			return;
+#endif
+			Tx_To_Tstat(send_schedual, 8);
+#ifdef  SemaphoreCreate						  
+		cSemaphoreGive(sem_subnet_tx);
+#endif
+
+		
+							  
 		OSDelay(5);
 		if(schedule_flag == 1)
 		{
@@ -165,6 +178,9 @@ void SendSchedualData(unsigned char id_index, bit output)
 	}
 }
  
+
+
+
 /* Execute per 500ms */
 void CaculateTime(void)
 {
@@ -561,7 +577,7 @@ void CheckIdRoutines(void)
 			ID_FLAG = ID_Config[i].Str.flag;
 			wr1_valid = 0;
 			wr2_valid = 0;
-//			test0 = ID_Config[i].Str.schedule1;
+
 			if(ID_Config[i].Str.schedule1 > 0 && ID_Config[i].Str.schedule1 <= MAX_WR)
 			{
 				if(GetBit(ID_Config[i].Str.schedule1 - 1, wr_state_index))
@@ -616,8 +632,6 @@ void CheckIdRoutines(void)
 			{
  				if(wr1_valid || wr2_valid)
 				{
-//					test0 = 5;
-//					SendSchedualData(i,wr1_value | wr2_value);  
 			#if 1
 					output_value = GetBit(i, output_state_index); 
 	 				temp_bit = GetBit(i, first_time_schedual);

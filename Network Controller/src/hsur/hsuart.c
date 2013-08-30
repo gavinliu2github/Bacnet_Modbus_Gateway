@@ -105,7 +105,7 @@
 
 /* STATIC VARIABLE DECLARATIONS */
 
-	   U8_T far hsurRxBuffer[UR2_MAX_RX_SIZE];
+U8_T far hsurRxBuffer[UR2_MAX_RX_SIZE];
 static U8_T	far 	hsurTxBuffer[UR2_MAX_TX_SIZE];
 static U16_T far 	hsurRxBufNum = 0;
 static U16_T far 	hsurTxBufNum = 0;
@@ -162,35 +162,24 @@ static void hsur_ReadLsr(void)
 
 	if (hsurLineStatusValue & UR2_OE)
 	{
-		// Overrun Error
 		hsurErrorCount ++;
-//		P3 = BIT0;
 	}
 	if (hsurLineStatusValue & UR2_PE)
 	{
-		// Parity Error
 		hsurErrorCount ++;
-//		P3 = BIT1;
 	}
 	if (hsurLineStatusValue & UR2_FE)
 	{
-		// Framing Error
 		hsurErrorCount ++;
-//		P3 = BIT2;
 	}
 	if (hsurLineStatusValue & UR2_BI)
 	{
-		// Break Interrupt Occured
 		hsurErrorCount ++;
-//		P3 = BIT3;
 	}
 	if (hsurLineStatusValue & UR2_FRAME_ERR)
 	{
-		// Mixing Error
 		hsurErrorCount ++;
-//		P3 = BIT4;
 	}
-
 	if (hsurErrorCount)
 	{
 		UR2_FCR |= UR2_RXFIFO_RST;

@@ -92,7 +92,7 @@ any details of its type. */
 void LoadCtx() reentrant;   /* Save the current working registers to stack, defined in OS_CPU_A.ASM */
 extern INT8U xdata * data C_XBP, TICK_INT;
 
-
+extern U8_T  MUTEX_TASK;
 /*
  * Setup the hardware to generate an interrupt off timer 2 at the required 
  * frequency.
@@ -126,7 +126,7 @@ portSTACK_TYPE *pxPortInitialiseStack( portSTACK_TYPE *pxTopOfStack, pdTASK_CODE
 //	*--stk			 = 'X';                 /* DPX1 for second DPTR */
 //	*--stk			 = 'H';                 /* DPH1 for second DPTR */
 //	*--stk			 = 'L';                 /* DPL1 for second DPTR */
-//	*--stk			 = DPS;                 /* DPS for second DPTR */
+//	*--stk			 = DPS;                 /* DPS  for second DPTR */
 	*--stk			 = PSW;					/* PSW */
 	*--stk			 = 0;                   /* R0  */
 /*
@@ -135,7 +135,7 @@ portSTACK_TYPE *pxPortInitialiseStack( portSTACK_TYPE *pxTopOfStack, pdTASK_CODE
 	*--stk			 = 3;                   // should be R3
 */
 	stk				-= sizeof(void *);      /* Keil C uses R1,R2,R3 to pass the */
-	*(void**)stk	 = pvParameters;                  /* arguments of functions.          */
+	*(void**)stk	 = pvParameters;        /* arguments of functions.          */
 
 	*--stk			 = 4;                   /* R4  */
 	*--stk			 = 5;                   /* R5  */
@@ -282,7 +282,11 @@ void vTimer2ISR( void ) interrupt 10
 		isr = EA;
 		EA = 0;
 		if(uart2_timeout)
+		{
 			uart2_timeout--;
+		   if(!uart2_timeout)
+		   		MUTEX_TASK = 0;
+		}
 		if(uart1_timeout)
 		{ uart1_timeout--;  }
 		if(USB_timeout)
