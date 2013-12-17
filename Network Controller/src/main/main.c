@@ -109,13 +109,12 @@
 #include "../gsm/gsm.h"
 #include "dyndns_app.h"
 
+
 //#include	"spi.h"
 //#include  "spiapi.h"
 //#include  "sd.h"
-
-
-//#include "sddriver.h"
-//#include "ff.h"
+//#include  "sddriver.h"
+//#include  "ff.h"
 
 #include "semphr.h"
 
@@ -133,13 +132,14 @@
 
 #define GSM_TASK_ENABLE  	0	// if enbale gsm task
 
-
+#define firmware_version_h	69
+#define firmware_version_l  19
 
 extern  GCONFIG_Init1();
 
 
 volatile char xdata  temco_version[30] _at_ 0x02;
-char temco_version[30] = {"model:100 fw:69.11 hw:26"}; 		//ascii hw:26 bl:14
+char temco_version[30] = {"model:100 fw:69.17 hw:26"}; 		//ascii hw:26 bl:14
 
 extern U8_T bytesN ;
 
@@ -425,6 +425,8 @@ void TCPIP_Task(void)reentrant
 				STOE_EnableIpFilter();
 #endif
 				cmdDhcpFlag = 0;
+
+
 			}
 		}
 #endif
@@ -926,7 +928,7 @@ void Uart0_Receive(void)
 {
 	if(uart0_RxCount > 0)
 	{
-
+	    U8_T  temp1[10],k;
 		LED = RS232_OK;
 				
 		
@@ -936,13 +938,29 @@ void Uart0_Receive(void)
 			{
 				Sever_Order = SERVER_RS232;
 				Sever_id = uart0_RxBuf[0]; 
+				temp1[0] = 0xff;
+				temp1[1] = 0x19;
+				temp1[2] = Para[13];
+				temp1[3] = Para[1];
+				temp1[4] = Para[3]; 
+				temp1[5] = Para[5]; 
+				temp1[6] = Para[7]; 
+
+				InitCRC16();
+	 			for(k = 0; k < 7; k++) 
+	                CRC16_Tstat(temp1[k]);
+
+				temp1[7] = CRChi;
+			    temp1[8] = CRClo;
+				Uart0_Tx(temp1, 9);
+
 
 
 #ifdef  SemaphoreCreate						  
 				if(cSemaphoreTake(sem_subnet_tx, 10) == pdFALSE)
 					return;
 #endif
-				Tx_To_Tstat(uart0_RxBuf, uart0_RxCount);
+			//	Tx_To_Tstat(temp, 9);
 #ifdef  SemaphoreCreate						  
 				cSemaphoreGive(sem_subnet_tx);
 #endif
@@ -1165,13 +1183,12 @@ void Uart0_Receive(void)
 					}
 					else if(StartAdd == 106)
 					{
-						if((((Para[212] << 8) | Para[213]) == 0) && (((uart0_RxBuf[4] << 8) | uart0_RxBuf[5]) != 0))
+						if(Para[213] != uart0_RxBuf[5])
 						{
-							Para[212] = uart0_RxBuf[4];
 							Para[213] = uart0_RxBuf[5];
-							ChangeIP = 1;
-							ChangeFlash = 2;
 						}
+						ChangeIP = 1;
+						ChangeFlash = 2;
 					}
 					else if((StartAdd >= 107) && (StartAdd <= 120)) //IP change ,reset cpu
 					{
@@ -1273,6 +1290,24 @@ void Uart0_Receive(void)
 								Para[2 * StartAdd + i] = uart0_RxBuf[i];
 						} 
 					}
+				}
+				else if((StartAdd == 107) && (uart0_RxBuf[6] == 24))	//IP,MASK,GATEWAY,multi-write
+				{
+					Para[215] = uart0_RxBuf[8];
+					Para[217] = uart0_RxBuf[10];
+					Para[219] = uart0_RxBuf[12];
+					Para[221] = uart0_RxBuf[14];
+					Para[223] = uart0_RxBuf[16];
+					Para[225] = uart0_RxBuf[18];
+					Para[227] = uart0_RxBuf[20];
+					Para[229] = uart0_RxBuf[22];
+					Para[231] = uart0_RxBuf[24];
+					Para[233] = uart0_RxBuf[26];
+					Para[235] = uart0_RxBuf[28];
+					Para[237] = uart0_RxBuf[30];
+	
+					mac_change_enable = 1;
+					ChangeIP = 1;
 				}
 				else if(StartAdd == SCHEDUAL_MODBUS_ADDRESS) //200th register ,write time 
 				{
@@ -1415,8 +1450,6 @@ void Uart1_Tx(U8_T *buf,U8_T len)
 
 U8_T forward_buffer[300];
 U8_T forward_buffer1[300];
-//U16_T 	uart2_count = 0;
-
 extern U16_T sessonlen;
 extern void Set_transaction_ID(U8_T *str, U16_T reg);
 
@@ -1528,7 +1561,7 @@ void Uart1_Receive(void)
 			{
 				case SCAN_BINSEARCH:
 					scan_response_state = MULTIPLE_ID;
-					if(uart1_count >= 9) 
+					if(uart1_count >= 9) // right
 					{
 						U8_T i;
 						InitCRC16();
@@ -1537,14 +1570,10 @@ void Uart1_Receive(void)
 		
 						if((forward_buffer1[7] == CRChi) && (forward_buffer1[8] == CRClo))
 						{
-							if((forward_buffer1[0] == 0xff) && (forward_buffer1[1] == 0x19))
+							if((forward_buffer1[0] == 0xff) && (forward_buffer1[1] == 0x19)) // double check it is the response for scan command
 							{
 								current_db.id = forward_buffer1[2];
-								current_db.sn = ((U32_T)forward_buffer1[6] << 24) |
-								 				((U32_T)forward_buffer1[5] << 16) |
-								  				 ((U32_T)forward_buffer1[4] << 8) |
-								   							   forward_buffer1[3];
-
+								current_db.sn = ((U32_T)forward_buffer1[6] << 24) | ((U32_T)forward_buffer1[5] << 16) | ((U32_T)forward_buffer1[4] << 8) | forward_buffer1[3];
 								if(uart1_count == 9)
 								{
 									scan_response_state = UNIQUE_ID;
@@ -1556,44 +1585,12 @@ void Uart1_Receive(void)
 							}
 						}
 					}
-//					if(uart2_count >= 9) 
-//					{
-//						U8_T i;
-//						InitCRC16();
-//						for(i = 0; i < 7; i++)
-//							CRC16_Tstat(forward_buffer[i]);
-//		
-//						if((forward_buffer[7] == CRChi) && (forward_buffer[8] == CRClo))
-//						{
-//							if((forward_buffer[0] == 0xff) && (forward_buffer[1] == 0x19)) 
-//							{
-//								current_db.id = forward_buffer[2];
-//								current_db.sn = ((U32_T)forward_buffer[6] << 24) |
-//								 				((U32_T)forward_buffer[5] << 16) |
-//								  					((U32_T)forward_buffer[4] << 8) |
-//								   							forward_buffer[3];
-//								if(uart2_count == 9)
-//								{
-//									scan_response_state = UNIQUE_ID;
-//								}
-//								else
-//								{
-//									scan_response_state = UNIQUE_ID_FROM_MULTIPLE;
-//								}
-//							}
-//						}
-//					}
-
 					break;
 				case SCAN_ASSIGN_ID_WITH_SN:
 					if(uart1_count == 12) 
 					{
 						scan_response_state = ASSIGN_ID;
 					}
-//					if(uart2_count == 12) 
-//					{
-//						scan_response_state = ASSIGN_ID;
-//					}
 					break;
 			}
 		}
@@ -1610,7 +1607,7 @@ void Uart1_Receive(void)
 
 void display_ip(void)
 {
-	U8_T adr,i;		//num,
+	U8_T adr,i;			//num,
 	U32_T sn,a,b,c,d;
 
 	a =  Para[7];
@@ -1676,6 +1673,7 @@ void Display_Updating(void)
 void Uart2_Receive(void)
 {
 	U16_T 	uart2_count = 0;
+
 	EINT4 = 0;
 
 	if(hsurRxCount)
@@ -1808,13 +1806,13 @@ void Tx_To_Tstat(U8_T *buf, U8_T len)
 
 	Uart1_Tx(buf, len);
 
-	Uart0_Tx(buf, len);
+//	Uart0_Tx(buf, len);
 
 	for(i = 0; i < len; i++)  
 		HSUR_PutChar(buf[i]);
 
 	if(len < 10)
-		DELAY_Us(1900);		   //1
+		DELAY_Us(1000);		   //1900
 	else
 		DELAY_Ms((len + 1) / 8);
 
@@ -1825,7 +1823,7 @@ void Tx_To_Tstat(U8_T *buf, U8_T len)
 void LedBeat_task(void) reentrant
 {   U16_T i;
   
-	portTickType xDelayPeriod = ( portTickType ) 500 / portTICK_RATE_MS;  //2000
+	portTickType xDelayPeriod = ( portTickType ) 500 / portTICK_RATE_MS;  	//2000
     portTickType xDelayPeriod1 = ( portTickType ) 100 / portTICK_RATE_MS;
 
 	for (;;)				
@@ -2011,11 +2009,12 @@ void Uart1_task(void) reentrant
    	
 	for (;;)
     { 
-		vTaskDelay(xDelayPeriod);
 		if(uart1_timeout == 0)
 		{
 			Uart1_Receive();
 		}
+
+		vTaskDelay(xDelayPeriod);
 	}
 }
 
@@ -2025,11 +2024,11 @@ void Uart2_task(void) reentrant
 	portTickType xDelayPeriod = ( portTickType ) 2000 / portTICK_RATE_MS;	//1000
 	for (;;)
     { 
-		vTaskDelay(xDelayPeriod);
 	//	if(uart2_timeout == 0)
 		{
 			Uart2_Receive();
 		}
+		vTaskDelay(xDelayPeriod);
 	}
 }
 
@@ -2104,6 +2103,7 @@ void UdpBroadcast_task(void)
 	portTickType xDelayPeriod = ( portTickType ) 2000 / portTICK_RATE_MS;
 	while(1)
 	{
+		display_ip();
 		vTaskDelay(xDelayPeriod);
 	}
 }
@@ -2150,6 +2150,8 @@ void USB_task(void)
 							cSemaphoreGive(sem_subnet_tx);
 #endif
 
+							
+									   												
 						}					
 						else if(DownBuf[1] == 0x1a)	//scan NC
 						{ 
@@ -2525,7 +2527,7 @@ void main(void )
 	ExecuteRuntimeFlag = 1;
 	
 #if  RS485_EN2
-	Rs485_2_EN = 0;
+	 Rs485_2_EN = 0;
 #endif
 
 	AX11000_Init();
@@ -2534,7 +2536,6 @@ void main(void )
 	Lcd_Initial();
 
 	uart2_rescue();
-
 
     I2C_Init();
 
@@ -2560,6 +2561,9 @@ void main(void )
 	
 	for(i = 0; i < 400; i++)   //read 
 		IntFlashReadByte(0x70000 + i, &Para[i]);   //the first para means location,last means array
+
+	Para[11] = firmware_version_h;
+	Para[9] = firmware_version_l;
 
 	E2prom_Read_Byte_From_Absolute_Address(0x0b, Para + 201);
 	E2prom_Read_Byte_From_Absolute_Address(0x0a, Para + 203);
@@ -2612,11 +2616,11 @@ void main(void )
    sTaskCreate(Uart2_task, (const signed portCHAR * const)"Uart2_task",
 		portMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 9, (xTaskHandle *)&xHandle9);
 
-   sTaskCreate(Scan_task, (const signed portCHAR * const)"Scan_task",	
-   		portMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 6, (xTaskHandle *)&xHandle12);
+//   sTaskCreate(Scan_task, (const signed portCHAR * const)"Scan_task",	
+//   		portMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 6, (xTaskHandle *)&xHandle12);
 
-   sTaskCreate(Schedule_task, (const signed portCHAR * const)"Schedule_task",
-		portMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 6, (xTaskHandle *)&xHandle8);
+//   sTaskCreate(Schedule_task, (const signed portCHAR * const)"Schedule_task",
+//		portMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 6, (xTaskHandle *)&xHandle8);
 
    sTaskCreate(TimeServer_task, (const signed portCHAR * const)"TimeServer_task",
 		portMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 7, (xTaskHandle *)&xHandle7); 
